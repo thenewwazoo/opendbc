@@ -937,6 +937,10 @@ class SafetyTest(SafetyTestBase):
             if attr.startswith('TestHyundaiLongitudinal'):
               # exceptions for common msgs across different Hyundai CAN platforms
               tx = list(filter(lambda m: m[0] not in [0x420, 0x50A, 0x389, 0x4A2], tx))
+
+            # ELM327 allows all OBD addresses (0x600-0x7FF); GM Camera allows 0x7E4 for BECM SoC queries
+            if attr == 'TestElm327' and current_test.startswith('TestGmCamera'):
+              tx = list(filter(lambda m: m[0] not in [0x7E4, ], tx))
             all_tx.append([[m[0], m[1], attr] for m in tx])
 
     # make sure we got all the msgs

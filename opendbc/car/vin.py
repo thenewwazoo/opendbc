@@ -73,3 +73,13 @@ def get_vin(can_recv, can_send, buses, timeout=0.1, retry=2):
     carlog.error(f"vin query retry ({i+1}) ...")
 
   return -1, -1, VIN_UNKNOWN
+
+
+def get_soc(can_recv, can_send, timeout=1.0) -> bytes | None:
+  """Query GM BECM for HV battery state of charge via UDS ReadDataByIdentifier (DID 0x8334).
+  Returns raw response bytes, or None if no response."""
+  query = IsoTpParallelQuery(can_send, can_recv, 0, [0x7E4],
+                             [b'\x22\x83\x34'], [b'\x62\x83\x34'],
+                             response_offset=0x400)
+  results = query.get_data(timeout)
+  return results.get((0x7E4, None))

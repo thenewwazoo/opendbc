@@ -75,10 +75,21 @@ def get_vin(can_recv, can_send, buses, timeout=0.1, retry=2):
   return -1, -1, VIN_UNKNOWN
 
 
-def get_soc(can_recv, can_send, timeout=1.0) -> bytes | None:
+def get_soc(can_recv, can_send, timeout=1.0) -> tuple[str, bytes] | None:
   """Query GM BECM for HV battery state of charge via UDS ReadDataByIdentifier (DID 0x8334).
-  Returns raw response bytes, or None if no response."""
-  query = IsoTpParallelQuery(can_send, can_recv, 0, [0x7E4],
-                             [b'\x22\x83\x34'], [b'\x62\x83\x34'])
-  results = query.get_data(timeout)
-  return results.get((0x7E4, None))
+  Tries physical addressing on bus 0 and bus 1, then functional addressing on bus 0.
+  Returns (description, raw response bytes) or None if no response."""
+  attempts = [
+    ("physical bus 0",  dict(bus=0, addrs=[0x7E4])),
+    ("physical bus 1",  dict(bus=1, addrs=[0x7E4])),
+    ("functional bus 0", dict(bus=0, addrs=[0x7E4], functional_addrs=[0x7DF])),
+  ]
+  for desc, kwargs in attempts:
+    query = IsoTpParallelQuery(can_send, can_recv,
+                               request=[b'\x22\x83\x34'], response=[b'\x62\x83\x34'],
+                               **kwargs)
+    results = query.get_data(timeout)
+    raw = results.get((0x7E4, None))
+    if raw is not None:
+      return desc, raw
+  return None

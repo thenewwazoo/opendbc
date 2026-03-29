@@ -76,15 +76,17 @@ def get_vin(can_recv, can_send, buses, timeout=0.1, retry=2):
 
 
 def get_soc(can_recv, can_send, timeout=1.0) -> tuple[str, bytes] | None:
-  """Query GM BECM for HV battery state of charge via UDS ReadDataByIdentifier (DID 0x8334).
-  Tries physical addressing on bus 0 and bus 1, then functional addressing on bus 0.
+  """Query for HV battery state of charge.
+  Tries UDS DID 0x8334 on BECM (0x7E4) via physical/functional addressing,
+  then Mode 01 PID 0x5B on ECM (0x7E0) as a fallback.
   Returns (description, raw response bytes) or None if no response."""
-  attempts = [
-    ("physical bus 0",  dict(bus=0, addrs=[0x7E4])),
-    ("physical bus 1",  dict(bus=1, addrs=[0x7E4])),
-    ("functional bus 0", dict(bus=0, addrs=[0x7E4], functional_addrs=[0x7DF])),
+  # UDS ReadDataByIdentifier 0x8334 → BECM at 0x7E4, standard +0x8 offset
+  becm_attempts = [
+    ("BECM 0x8334 physical bus 0",   dict(bus=0, addrs=[0x7E4])),
+    ("BECM 0x8334 physical bus 1",   dict(bus=1, addrs=[0x7E4])),
+    ("BECM 0x8334 functional bus 0", dict(bus=0, addrs=[0x7E4], functional_addrs=[0x7DF])),
   ]
-  for desc, kwargs in attempts:
+  for desc, kwargs in becm_attempts:
     query = IsoTpParallelQuery(can_send, can_recv,
                                request=[b'\x22\x83\x34'], response=[b'\x62\x83\x34'],
                                **kwargs)
@@ -92,4 +94,20 @@ def get_soc(can_recv, can_send, timeout=1.0) -> tuple[str, bytes] | None:
     raw = results.get((0x7E4, None))
     if raw is not None:
       return desc, raw
+
+  # Mode 01 PID 0x5B → ECM at 0x7E0, standard +0x8 offset (formula: A/2.55 → %)
+  ecm_attempts = [
+    ("ECM 0x5B physical bus 0",   dict(bus=0, addrs=[0x7E0])),
+    ("ECM 0x5B physical bus 1",   dict(bus=1, addrs=[0x7E0])),
+    ("ECM 0x5B functional bus 0", dict(bus=0, addrs=[0x7E0], functional_addrs=[0x7DF])),
+  ]
+  for desc, kwargs in ecm_attempts:
+    query = IsoTpParallelQuery(can_send, can_recv,
+                               request=[b'\x01\x5b'], response=[b'\x41\x5b'],
+                               **kwargs)
+    results = query.get_data(timeout)
+    raw = results.get((0x7E0, None))
+    if raw is not None:
+      return desc, raw
+
   return None
